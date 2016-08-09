@@ -1,0 +1,261 @@
+
+
+
+        --------
+     |- A L Y A: sq_cyl
+        --------
+
+
+
+        --------------------
+     |- OPTIMIZATION OPTIONS
+        ---------------------
+
+        MPI3:                       OFF
+        BLAS:                       OFF
+
+
+        --------------------
+     |- SUMMARY OF PARTITION
+        --------------------
+
+        # SUBDOMAINS=               63
+        TOTAL # NODES=         1211590 (INTERIOR+REPEATED BOUNDARY)
+
+        MIN. # NPOIN=            18418 (SUBDOMAIN     4)
+        MAX. # NPOIN=            20130 (SUBDOMAIN    31)
+        AVE. # NPOIN=            19231
+        MIN. # NELEM=            16204 (SUBDOMAIN    48)
+        MAX. # NELEM=            17188 (SUBDOMAIN    38)
+        AVE. # NELEM=            16688
+        MIN. # NELEM(WEIGHT)=   129632 (SUBDOMAIN    48)
+        MAX. # NELEM(WEIGHT)=   137504 (SUBDOMAIN    38)
+        AVE. # NELEM(WEIGHT)=   133504
+        MIN. # NBOUN=                0 (SUBDOMAIN    16)
+        MAX. # NBOUN=             1480 (SUBDOMAIN     6)
+        AVE. # NBOUN=              374
+
+        MIN. # NNEIG=                2 (SUBDOMAIN     3)
+        MAX. # NNEIG=                9 (SUBDOMAIN     5)
+        AVE. # NNEIG=                6
+        MIN. # NBBOU=             1676 (SUBDOMAIN    34)
+        MAX. # NBBOU=             5010 (SUBDOMAIN    63)
+        AVE. # NBBOU=             3503
+
+
+        ------------------------
+     |- INTER COLOR COMMUNICATOR
+        ------------------------
+
+
+        TOTAL NUMBER OF CODES=         1
+        TOTAL NUMBER OF ZONES=         1
+        TOTAL NUMBER OF SUBDS=         1
+
+        NUMBER OF ZONES IN MY CODE=    1
+        NUMBER OF SUBDS IN MY CODE=    1
+                                    
+        LIST OF COMMUNICATORS:      
+
+        CODE=(  0,  0), ZONE=(  0,  0), SUBD=(  0,  0)
+        CODE=(  1,  1), ZONE=(  0,  0), SUBD=(  0,  0)
+        CODE=(  1,  1), ZONE=(  1,  1), SUBD=(  0,  0)
+
+
+        ------------------------
+     |- PARTITIONS BIN STRUCTURE
+        ------------------------
+
+        BIN DIMENSIONS=                66   37    1
+
+
+        ------
+     |- OPENMP
+        ------
+
+        NUMBER OF THREADS=                0
+        NUMBER OF BLOCKS=                10
+        AVERAGE ELEMENT CHUNK=         1669
+        AVERAGE BOUNDARY CHUNK=          38
+        AVERAGE NODE CHUNK=            1923
+        AVERAGE # OF COLORS=              1
+
+
+        --------------
+     |- WITNESS POINTS
+        --------------
+
+
+
+         ALL WITNESS POINTS HAVE FOUND HOST ELEMENTS
+
+
+        ------------------------
+     |- BOUNDARY CONDITION CODES
+        ------------------------
+
+
+        CODE=             1
+        CODE=             1  &  3
+        CODE=             2
+        CODE=             3
+        CODE=             3  &  4
+        CODE=             4
+     |- WARNINGS HAVE BEEN FOUND IN NASTIN DATA FILE
+
+
+
+        -----------------------
+     |- SUMMARY OF PROBLEM DATA
+        -----------------------
+
+
+        |- GENERAL DATA:
+
+           MODULES SOLVED:       NASTIN,KERMOD
+           BLOCK DEFINITION:     1:NASTIN
+           TIME STEP STRATEGY:   PRESCRIBED
+           TIME STEP=            0.250000E-03
+           TIME RANGE=           0.000000E+00,0.100000E+06
+
+        |- DOMAIN DATA:
+
+           DOMAIN DIMENSION=             3
+           TOTAL NODES=                  0
+           HOLE NODES=                   0
+           ..................... 
+           BANDWIDTH=               967377
+           PROFILE=              0.181E+11
+           ..................... 
+           TOTAL VOLUME=         0.732160E-01
+           AVE. ELEMENT VOLUME=  0.696400E-07
+           MIN. ELEMENT VOLUME=  0.383458E-10 (ELEMENT         0)
+           MAX. ELEMENT VOLUME=  0.507047E-06 (ELEMENT         0)
+           ..................... 
+           TOTAL ELEMENTS=               0
+           EXTENSION ELEMENTS=           0
+           HOLE ELEMENTS=                0
+           ELEMENTS USED:        0 HEX08
+           GAUSS POINTS (RULE)=  8(open)
+           ..................... 
+           TOTAL BOUNDARIES=         23580
+           EXTENSION BOUNDARIES=         0
+           HOLE BOUNDARIES=              0
+           BOUNDARIES USED:      0 QUA04
+           GAUSS POINTS (RULE)=  4(open)
+
+
+        ----------------------
+     |- SUMMARY OF CONVERGENCE
+        ----------------------
+
+     |- WARNINGS HAVE BEEN FOUND IN NASTIN DATA FILE
+
+
+        |- TIME STEP NUMBER:            1
+           CURRENT TIME STEP dt = 0.250000E-03
+           CURRENT TIME t       = 0.250000E-03
+           NASTIN:
+           - CRITICAL TIME STEP DTC: 0.130647E-05
+           - RATIO DT/DTC:           0.191355E+03
+
+           GLOBAL ITERATION NUMBER:     1, BLOCK NUMBER:  1
+           CURRENT CPU TIME:        0.245095E+03
+           RESIDUAL OF VELOCITY          :     0.334520E+00 (%)
+           RESIDUAL OF PRESSURE          :     0.100000E+01 (%)
+
+        |- TIME STEP NUMBER:            2
+           CURRENT TIME STEP dt = 0.250000E-03
+           CURRENT TIME t       = 0.500000E-03
+           NASTIN:
+           - CRITICAL TIME STEP DTC: 0.119644E-05
+           - RATIO DT/DTC:           0.208952E+03
+
+           GLOBAL ITERATION NUMBER:     1, BLOCK NUMBER:  1
+           CURRENT CPU TIME:        0.337214E+03
+           RESIDUAL OF VELOCITY          :     0.138755E+00 (%)
+           RESIDUAL OF PRESSURE          :     0.110507E+01 (%)
+
+        |- TIME STEP NUMBER:            3
+           CURRENT TIME STEP dt = 0.250000E-03
+           CURRENT TIME t       = 0.750000E-03
+           NASTIN:
+           - CRITICAL TIME STEP DTC: 0.109641E-05
+           - RATIO DT/DTC:           0.228017E+03
+
+           GLOBAL ITERATION NUMBER:     1, BLOCK NUMBER:  1
+           CURRENT CPU TIME:        0.430186E+03
+           RESIDUAL OF VELOCITY          :     0.566368E-01 (%)
+           RESIDUAL OF PRESSURE          :     0.310649E+01 (%)
+
+
+        --------------------------
+     |- SUMMARY OF REQUIRED MEMORY
+        --------------------------
+
+
+
+        MASTER COUNT:
+        -------------
+
+        TOTAL MEMORY:                360.31 Mbytes
+        CONSTRUCTION OF THE DOMAIN:  238.97 Mbytes
+        ELEMENT SEARCH STRATEGY:       0.00 Mbytes
+        NASTIN MODULE:                 0.00 Mbytes
+        KERMOD MODULE:                 0.03 Mbytes
+        PARALL SERVICE:              121.24 Mbytes
+        SOLVERS:                       0.06 Mbytes
+
+        SLAVE MAX COUNT:
+        ----------------
+
+        TOTAL MEMORY:                 86.10 Mbytes
+        CONSTRUCTION OF THE DOMAIN:    3.94 Mbytes
+        ELEMENT SEARCH STRATEGY:       1.63 Mbytes
+        NASTIN MODULE:                16.86 Mbytes
+        KERMOD MODULE:                 0.03 Mbytes
+        PARALL SERVICE:                0.21 Mbytes
+        SOLVERS:                      63.61 Mbytes
+
+
+        --------------------------
+     |- SUMMARY OF COMPUTING TIMES
+        --------------------------
+
+
+        TOTAL CPU TIME:                  436.57
+        STARTING OPERATIONS:             153.82 ( 35.23 % )
+          Reading and partition:         151.98 ( 34.81 % )
+          Mesh multiplication:             0.01 (  0.00 % )
+          Domain construction:             1.69 (  0.39 % )
+          Additional arrays:               0.14 (  0.03 % )
+        NASTIN MODULE:                   296.75 ( 67.97 % )
+          Matrix construction:       
+               Average:                   76.80 ( 25.88 % )
+               Maximum:                  120.39 ( 40.57 % )
+               Load balance:               0.64
+          Algebraic solver:          
+               Average:                  120.88 ( 40.73 % )
+               Maximum:                  120.88 ( 40.73 % )
+               Load balance:               1.00
+          Postprocess:               
+               Average:                    9.49 (  3.20 % )
+               Maximum:                    9.49 (  3.20 % )
+               Load balance:               1.00
+        KERMOD MODULE:                     0.00 (  0.00 % )
+          Matrix construction:       
+               Average:                    0.00 (  0.00 % )
+               Maximum:                    0.00 (  0.00 % )
+               Load balance:               0.00
+          Algebraic solver:          
+               Average:                    0.00 (  0.00 % )
+               Maximum:                    0.00 (  0.00 % )
+               Load balance:               0.00
+          Postprocess:               
+               Average:                    0.00 (  0.00 % )
+               Maximum:                    0.00 (  0.00 % )
+               Load balance:               0.00
+
+
+     |- END OF ANALYSIS
+

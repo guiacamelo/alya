@@ -1,0 +1,1843 @@
+# -*- coding: utf-8 -*-
+# -*- mode: org -*-
+
+# This two-line information appear only in the PDF
+#+TITLE:Caracterização de Desempenho do Simulador de Dinâmica de Fluídos Alya
+#+AUTHOR: Guilherme Antonio Camelo, Lucas Mello Schnorr
+
+#+STARTUP: overview indent
+#+LANGUAGE: pt-br
+#+OPTIONS: H:3 creator:nil timestamp:nil skip:nil toc:nil num:t ^:nil ~:~
+#+OPTIONS: author:nil title:nil date:nil
+#+TAGS: noexport(n) deprecated(d) ignore(i)
+#+EXPORT_SELECT_TAGS: export
+#+EXPORT_EXCLUDE_TAGS: noexport
+
+* Org customizaton + Ignore tag (Start Here) 			   :noexport:
+
+#+begin_src emacs-lisp :results output :session :exports both
+(add-to-list 'load-path ".")
+(require 'ox-extra)
+(ox-extras-activate '(ignore-headlines))
+#+end_src
+
+#+RESULTS:
+
+* Latex Header                                                       :ignore:
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [12pt, a4paper]
+#+LATEX_HEADER: \usepackage[T1]{fontenc}
+#+LATEX_HEADER: \usepackage[utf8]{inputenc}
+#+LATEX_HEADER: \usepackage[brazil]{babel}
+#+LATEX_HEADER: \usepackage{sbc-template}
+#+LATEX_HEADER: \usepackage{soulutf8}
+#+LATEX_HEADER: \usepackage{graphicx,url}
+#+LATEX_HEADER: \usepackage{listings}
+#+LATEX_HEADER: \usepackage{hyperref}
+#+LATEX_HEADER: \usepackage{todonotes}
+
+#+BEGIN_LaTeX
+% \let\oldcite=\cite
+% \renewcommand\cite[2][]{~\ifthenelse{\equal{#1}{}}{\oldcite{#2}}{\oldcite[#1]{#2}}\xspace}
+% %\def\cite#1{~\oldcite{#1}\xspace}
+% \let\oldref=\ref
+% \def\ref#1{~\oldref{#1}\xspace}
+% \def\ie{i.e.,\xspace}
+% \def\eg{e.g.,\xspace}
+% \def\etal{\textit{et al.}\xspace}
+
+\newcommand{\LMS}[2][inline]{\todo[color=blue!50,#1]{\small\sf \textbf{Lucas:} #2}}
+#+END_LaTeX
+
+* Frontpage                                                          :ignore:
+#+BEGIN_LaTeX
+\title{Caracterização de Desempenho do \\ Simulador de Dinâmica de Fluídos Alya}
+\author{Guilherme Antonio Camelo, Lucas Mello Schnorr}
+\address{Instituto de Informática -- Universidade Federal do Rio Grande do Sul \\
+Caixa Postal 15.064 -- 91.501-970 -- Porto Alegre -- RS -- Brazil \\
+\{gacamelo,schnorr\}@inf.ufrgs.br
+}
+#+END_LaTeX
+
+#+LaTeX: \maketitle
+
+* Abstract                                                           :ignore:
+
+#+begin_abstract     
+This article presents a performance characterization of the Alya
+fluid dynamic simulator. Experiments are conducted in parallel using
+the MPI specification implemented by OpenMPI, and was traced using
+the Extrae tracing tool. By taking a closer look to the traces, it is
+possible to effectively see different performance patterns such as
+the communications among ranks, and the effective application load
+imbalance.
+#+end_abstract
+
+#+begin_resumo
+Este artigo apresenta uma caracterização de desempenho do simulador de
+dinâmica dos fluidos Alya. As medidas são obtidas com execuções em
+paralelo usando a especificação MPI implementado por OpenMPI, sendo
+que a aplicação foi rastreada utilizando a ferramenta de rastreamento
+Extrae. Os resultados indicam ser possível a observação de diferentes
+padrões de desempenho, tais como as comunicações entre as processos, e
+o desequilíbrio de carga efetivo da aplicação.
+#+end_resumo
+
+* Introdução
+
+Simulação numérica é utilizada na ciência para modelar e entender
+comportamentos da natureza. Geralmente, essas simulações são
+realizadas através de técnicas baseadas em dinâmica de fluidos. Em
+geral, é implementado um modelo da realidade que é resolvido de forma
+numérica e iterativa através de passos de tempo.  Computadores de alto
+desempenho são frequentemente utilizados para a execução desses
+modelos numéricos, visto que execuções sequenciais tornariam a
+execução de certas simulações impraticáveis.
+#+LaTeX: %
+Técnicas de programação distribuída e paralela disponibilizam um poder
+computacional elevado. Ferramentas como OpenMPI, por exemplo,
+possibilitam execuções de programas complexos em menos tempo, e são
+ideais par lidar com problemas físicos que simulam o mundo real.  Este
+é o caso do arcabouço Alya\cite{vazquez2014alya}, que é um projeto de
+código aberto do Barcelona Supercomputing Center (BSC) para resolver
+numericamente problemas físicos, fazendo parte do Benchmark
+Prace\cite{Prace}.
+
+A maioria das aplicações de simulação numérica, inclusive aquelas
+baseadas em Alya, tem cargas irregulares durante a execução. A
+irregularidade leva a um desbalanceamento de carga tanto entre os
+recursos quanto no tempo, conforme avança a simulação. Descobrir o
+real comportamento da aplicação em uma determinada plataforma é um
+passo inicial fundamental para se aplicar técnicas de otimização, tais
+como melhores algoritmos de balanceamento ou um padrão de comunicação
+mais adequado. A forma mais eficiente de se obter tais informações,
+quando não se conhece o código da aplicação, é aplicar técnicas de
+rastreamento. Elas registram em arquivos o comportanto da aplicação na
+forma de eventos, registrando o início e final de chamadas às funções
+MPI, por exemplo.
+    
+Neste artigo, a ferramenta de simulação de dinâmica de fluidos Alya é
+executada em uma plataforma de 4 nós totalizando 64 cores, com
+OpenMPI\cite{gabriel2004open}. O objetivo é investigar se a
+ferramenta Alya, para uma dada entrada de dados, apresenta um
+comportamento de cálculo irregular entre os recursos e no tempo. Para
+tal, neste trabalho, a ferramenta de rastreamento Extrae é empregada
+com o objetivo de registrar todas as diretivas de comunicação
+MPI. Este tipo de estudo já foi conduzido \cite{jorge2014alya} em uma
+plataforma de larga escala. Nosso objetivo secundário através deste
+trabalho é entender o comportamento em uma plataforma acessível mas de
+menor escala.
+
+# Realizar uma investigação científica com resultados reprodutíveis é
+# altamente recomendado para que os resultados científicos sejam
+# relevantes\cite{Arnaud:2015}. Empregou-se, assim, um esforço para
+# tornar este trabalho reprodutível seguindo as sugestões disponibilizas
+# no curso \emph{Scientific Methodology and Performance Evaluation}
+# (SMPE)@@latex:\footnote{\url{http://github.com/alegrand/smpe/}}@@.  O
+# resultado deste esforço está publicado em um repositório no Github@@latex:
+# \footnote{\url{http://github.com/guiacamelo/alya/}}@@.
+
+# Um \textit{Labbook} foi criado e nele está presente toda a linha de
+# raciocínio, tentativas, mesmo que com resultados negativos,
+# abordagens, códigos utilizados, e anotações relevantes. Com isso,
+# espera-se neste artigo, apresentar um experimento reprodutível,
+# mantendo todas informações necessárias para tal no repositório
+# \cite{camelo:2016}.
+
+O texto tem a seguinte organização.  A Seção
+\ref{sec:ambiente} expõe a plataforma experimental utilizada. A
+metodologia empregada na caracterização de desempenho é detalhada na
+Seção \ref{sec:metodologia}. Os resultados são apresentados na Seção
+\ref{sec:resultados}. Os principais resultados assim como os trabalhos
+futuros são enfim detalhados na Seção \ref{sec:conclusao}.
+#+LaTeX: %
+Uma investigação científica reprodutível é
+fundamental\cite{Arnaud:2015}. Este trabalho é portanto fruto de um esforço de
+reprodutibilidade, disponível em
+#+LaTeX: {\scriptsize \url{http://github.com/guiacamelo/alya/}}.
+
+* Ambiente de Execução \label{sec:ambiente}
+
+Os experimentos foram executados nos computados que formam o cluster Draco do Instituto de Informática da Universidade Federal do Rio  Grande do Sul.
+O cluster é formado por 8 computadores, cada computador possui 16  \textit{cores} físicos (32 com hyperthreading), 64 gigabytes de memória RAM, processadores 
+Intel(R) Xeon(R) CPU E5-2640 v2 @ 2.00GHz, rodando Ubuntu 14.04.4 LTS. Nas execuções foram utilizados somente os  \textit{cores} físicos, e nas experimentações, 
+diferentes configurações foram testadas, variando o número de
+\textit{cores}, número de nós, e quantidade de passos de tempo (\textit{timestep}s).
+#+LaTeX: %
+Para a criação do traço foi utilizado a ferramenta \textit{Extrae}
+3.3.0, e para a execução em paralelo, utilizamos a versão 1.10.2 do
+OpenMPI.
+
+* Metodologia Experimental \label{sec:metodologia}
+
+Os experimentos foram conduzidos usando quatro nós para um total de 64
+\textit{cores}. A simulação rodou somente até o fim do terceiro
+\textit{timestep} devido ao grande tamanho dos arquivos criados no
+traço.  A ferramenta \textit{Extrae} cria traços individuais de cada
+processador, mantendo informações relativas a comunicação e execução.
+São criados vários arquivos em formato \textit{.mpits} que contem
+informações sobre o que foi executado por um determinado processo. Em
+seguida é necessário então converter os arquivos usando a ferramenta
+\textit{mpi2prv} que faz a união dos arquivos e os converte para o
+formato Paraver (\textit{.prv}). Após isso, um script em
+\textit{perl} é utilizado para filtrar as informações relevantes em
+uma saída no formato \emph{Comma-Separated Values} (CSV), utilizado
+pelos scripts de análise.
+#+LaTeX: %
+O CSV resultante do processo de execução/rastreamento tem quatro
+colunas de dados: processo, referente ao rank MPI ( \textit{Rank}), o
+tempo do início do estado do processo ( \textit{Start}), tempo do fim
+do estado (\textit{End}), e qual o nome do estado \textit{MPI}
+(\textit{State}). Com estas informações é possível calcular a carga de
+trabalho efetiva (em tempo de execução) de cada processo, assim como
+construir gráficos espaço/tempo que nos informa a ordem e em que tempo
+cada estado ocorreu em cada processo. Todos os cálculos são feitos a
+partir de scripts escritos na linguagem R, fazendo uso das bibliotecas
+\textit{ggplot2} e \textit{dplyr}. A Figura \ref{fig:methodology}
+resume esses passos para se gerar a execução e análise do experimento.
+
+#+BEGIN_LaTeX
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\linewidth]{img/methodology.pdf}%
+\caption{Metodologia usada para a execução e análise do experimento.}
+\label{fig:methodology}
+\end{figure}
+#+END_LaTeX
+
+
+
+
+# Para analisar os dados, foi utilizada a linguagem R em conjunto com as
+# bibliotecas .  Os códigos para a
+# criação de cada plot são apresentados nas subseções \ref{traco} e
+# \ref{balanceamento} além de estarem presentes no \textit{Labbook}.
+
+* Resultados \label{sec:resultados}
+** Texto introdutório da seção                                       :ignore:
+
+A caracterização de tempo se baseia principamente nos resultados
+obtidos a partir de uma execução com quatro nós e 64 \textit{cores}.
+Escolheu-se um número reduzido de nós pois os arquivos de rastro
+gerados pelo \textit{Extrae} são minados de informação e facilmente
+alcançam tamanhos grandes (na ordem de Gigabytes). Tentou-se então
+evitar arquivos demasiadamente grandes, facilitando o processo de
+\textit{parsing} e filtragem de dados. Pelo mesmo motivo, utilizou-se
+somente três \textit{timestep}s.
+#+LaTeX: %
+Essa abordagem reduzida tem o objetivo inicial de identificar
+características relevantes da aplicação, e avaliar se é interessante
+realizar o mesmo experimento para problemas maiores (maior número de
+\textit{timestep}s). São apresentados a seguir uma visão geral e um
+detalhamento do comportamento da aplicação.
+
+** Balanceamento de Carga
+
+A Figura \ref{fig:overview} mostra o tempo agregado de cálculo efetivo
+para cada processo participante da aplicação. Os tempos são calculados
+efetuando-se o somatório de todos os períodos de tempo em que o
+processo realiza o processamento dos dados. Não fazem parte dessas
+medidas o tempo de comunicação MPI ou de sincronização ponto-a-ponto
+ou coletiva, por exemplo. Nota-se que a maioria dos processos tem um
+total de computação na ordem de 150 segundos. Em alguns casos, no
+entanto, os tempos são maiores, até 300 segundos para o caso do
+processo 60. Isso é um indício de desbalanceamento de carga espacial
+entre os processos considerando este estudo de caso específico.
+
+#+BEGIN_LaTeX
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=.7\linewidth]{img/trace4_64-SumRunningDuration_per_Rank_v2.pdf}%
+\caption{Tempo agregado de cálculo efetivo (eixo Y) por processo (X).}
+\label{fig:overview}
+\end{figure}
+#+END_LaTeX
+
+** Espaço/Tempo da Execução
+
+Na figura \ref{fig:detail} é apresentado o detalhamento do
+balanceamento de carga, mostrando o intervalo de tempo que cada
+processo ficou em estado de cálculo efetivo. No início da execução, o
+processo zero se engaja em dividir as tarefas entre todos
+processos. Até o fim da divisão de tarefas, que acontece a marcação
+temporal de 150 segundos, somente o processo zero é executado. Após
+este momento, os outros 63 processos começam a trabalhar.  A partir
+desse momento, o processo raiz assume um papel de organizador, ficando
+ocioso na espera da resposta dos demais processos.
+
+#+BEGIN_LaTeX
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\linewidth]{img/trace4_64-SpaceTimeView_Running_Only.jpg}%
+\caption{Processo (eixo X) por tempo em estado de calculo efetivo.}
+\label{fig:detail}
+\end{figure}
+#+END_LaTeX
+
+Uma particularidade interessante que pode também ser observada na
+Figura \ref{fig:detail} é a existência de quatro grupos de processos:
+do 0--15, do 16--31, e assim por diante. Esse comportamento se
+correlaciona com a quantidade de nós utilizada no experimento,
+indicando que internamente em um nó todos os processos começam seu
+cálculo praticamente ao mesmo tempo. Isso leva a indicar que a
+distribuição inicial da carga a partir do processo zero não é
+escalável, pois visivelmente os cálculos nas quatro máquinas começam
+de maneira sequencial: primeiro o grupo entre os processos 32--47,
+depois o grupo dos processos 16--31, em seguida o grupo que contém o
+processo zero (0--15) e enfim o grupo dos processos 48--63. Neste
+último grupo, podemos observar também uma anomalia nos processos 60 e
+62, visto que eles começam/terminam o cálculo após os demais de seu
+nó.
+
+O processo 60 apresenta um comportamento peculiar quando comparado aos
+demais. Na Figura \ref{fig:overview}, ele apresenta um tempo de
+cálculo efetivo total de cerca de 300 segundos, o dobro da maioria dos
+demais processos. Na figura \ref{fig:detail}, ele é um dos processos
+que tem um comportamento anômalo, começando e terminando sua execução
+por último. Além disso, os estados de execução (\emph{Running}), onde
+o cálculo é efetivamente realizado, parece não conter espaços como os
+demais processos. Isso provavelmente indica que o tempo gasto nas
+funções de comunicação para este processo em particular seja menor.
+
+** Comportamento de cada Processo por Estado 
+
+A Figura \ref{fig:estado} apresenta um sumário do tempo (eixo Y)
+dedicado por processo (eixo X) a cada estado comportamento (diferentes
+facetas). Somente os cinco estados mais relevantes são apresentados
+(/Blocking Send/, /Group Communication/, /Running/, /Send Receive/ e /Waiting a
+message/). Os demais apresentam ou tempos muito pequenos ou
+inexistentes. Os envios bloqueantes (/Blocking Send/) são menos
+representativos e de certa forma semelhantes entre todos os processos
+(salvo para o grupo 48--63, um pouco maior). As comunicações de grupo
+(/Group Communication/) tem tempos bastante diferentes entre os
+processos e um tempo bastante grande para o processo zero, como
+detalhado nas seções anteriores. O desbalanceamento de carga é
+explícito pela faceta de cálculo (/Running/, semelhante aos dados
+apresentados na Figura \ref{fig:overview}). Os tempos de envio e
+recepção (/Send Receive/) são relativamente homogêneos entre os
+processos, salvo para alguns onde o tempo é menor. Enfim, podemos
+observar que a razão potencial da anomalia dos processos 60 e 62 é
+devido ao tempo adicional gasto no estado /Waiting a message/, como pode
+ser visto na faceta mais a direita deste gráfico.
+
+#+BEGIN_LaTeX
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\linewidth]{img/trace4_64_StackedBars_StateSummary.pdf}
+\caption{Tempo dedicado a cada estado por Processo.}
+\label{fig:estado}
+\end{figure}
+#+END_LaTeX
+
+** Porcentagem de Desbalanceamento
+
+Segundo \cite{pearce2012quantifying}, em seguida revalidado por Alles
+\cite{alles2016}, usa-se a fórmula da porcentagem de desbalanceamento
+de carga (/percent imbalance/) para avaliar formalmente o balanceamento
+de carga. Ela é descrita pela Equação \ref{eq:pi}, onde $\lambda$ é o valor
+que se deseja calcular, $L_{max}$ tem o valor do processo com a maior
+carga, $\overline{L}$ tem a média da carga computacional entre todos
+os processos participantes. A métrica pode ser calculada tanto para
+toda a execução da aplicação quanto para diferentes fases.
+
+#+BEGIN_LaTeX
+\begin{equation}
+\lambda = (\frac{L_{max}}{\overline{L}} -1) * 100%
+\label{eq:pi}
+\end{equation}
+#+END_LaTeX
+
+Neste trabalho foi realizado o cálculo da métrica considerando todo o
+tempo de execução, sendo portanto uma indicação global de
+desbalanceamento.  A métrica caracteriza a distribuição desigual de
+trabalho, e ao aplicar ao conjunto de dados, temos $\lambda=74.25161$. Isso
+indica que existe um desbalanceamento de cerca de 75% da carga de
+trabalho, indicando que existe um potencial de melhora caso a carga
+seja melhor balanceada entre os recursos computacionais.
+
+*** Skewness and Kurtosis                                        :noexport:
+
+Adquirimos mais informações sobre a disposição do
+\skewness\(assimetria/obliquidade), e \kurtosis\. $skewness$, ou assimetria, fornece
+fornece indicadores da quantidade de valores que ficaram a cima ou abaixo da
+média. Um skewness positivo significa que poucos processos
+ficaram com tempos de execução a cima da média, enquanto skewness negativo significa que
+poucos processos tem tempo de execução menor que a média. Uma
+distribuição de carga normal implica em skewness igual a zero. 
+$kurtosis$ se relaciona com a magnitude de desvios. Um valor alto de
+kurtosis indica que a variância é causada por esporádicos desvios
+grandes. Valores baixos de kurtosis representam desvios menores
+
+Essa distribuição apresenta um desvio padrão de $\sigma = 32.40468$, um
+skewness $skewness = 1.419715$, e um kurtosis de $kurtosis=5.071172$.
+De acorto com \cite{Prace} temos um desbalanceamento de 74.25161 \%,
+no qual poucos processos tem tempo de execução acima da média, e
+alguns desvios grande e exporádicos são o que mais influenciam na a variância. 
+ 
+
+
+** Traço relativo a 4 nós e 64  \textit{cores}  \label{traco}      :noexport:
+Com o intuito de reforçar a reprodutibilidade e apresentar os resultado da forma mais transparente possível, 
+mostramos abaixo o código responsável pela criação do gráfico da figura \ref{fig:trace4_64}.
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports none :width 600 :height 400 :session *R* 
+ df <- read.csv("trace4_64.pjdump", header=FALSE, sep=",");
+names(df) <- c("Processo", "Inicio", "Fim", "Estado_MPI","Duracao");
+library(ggplot2);
+gg<-ggplot(df, aes(x=Inicio, y=Processo, color=Estado_MPI)) +
+   theme_bw() +
+   ggtitle("Duraçao de Estados MPI por Processo") +
+   ylab("Processo")+
+   xlab("Tempo [s]")+
+   geom_vline(aes(xintercept=245.095,linetype = "dt1 = 245.095")) +
+   geom_vline(aes(xintercept=337.214,linetype = "dt2 = 337.214")) +
+   geom_vline(aes(xintercept=430.186,linetype = "dt3 = 430.186")) +   
+   labs(linetype='Tempo de termino do dt') +
+   geom_segment (aes(xend=Fim, yend=Processo), size=2) ;
+ggsave("trace4_64_tstepsPort.png")
+#+end_src
+
+A figura \ref{fig:trace4_64} é relativa ao traço da execução do  \textit{ALYA} com 3  \textit{timestep}s, 4 nós, e 64  \textit{cores}.
+O eixo x representa o tempo em segundos, e o eixo y representa os processos.
+É possível perceber que um grande tempo é gasto na divisão de tarefas, 
+o processo raiz se engaja nesta função. Enquanto isso
+63  \textit{cores} ficam ociosos(em estado  \textit{Wait}) por volta 150 segundos
+até que as mensagens com a divisão de trabalho começam a serem mandadas 
+pelo processo raiz. A partir desse momento, cada processo começa a 
+calcular o resultado da fatia do problema que lhe foi disponibilizada, 
+e o processo raiz assume um papel de comunicador organizador e espera
+a resposta dos processos.
+
+
+A divisão dos  \textit{timestep}s (baseada nos logs de execução do  \textit{ALYA}) é representada pelas barras verticais. 
+Percebe-se que devido a divisão de tarefas o primeiro  \textit{timestep} tem um tempo bastante elevado para que seja finalizado.
+O segundo  \textit{timestep} apresenta uma carga bastante balanceada, porem o  \textit{timestep} 3 aparenta ser desbalanceado, de modo que os
+processos ficam ociosos no meio do  \textit{timestep}, enquanto outros processo calculam até o fim do  \textit{timestep}.
+
+
+
+** Balanceamento de carga relativo a 4 nos 64  \textit{cores} \label{balanceamento} :noexport:
+
+O gráfico da figura  \ref{fig:loadBalance4_64.png} mostra o 
+balanceamento de carga da aplicação. Para a sua criação, 
+somente foram considerados os estados  \textit{Running}. O data frame foi agrupado por processo( \textit{Rank}), 
+e então todos tempos dos estados  \textit{Running} de um mesmo processo foram somados. Desse modo é possível saber 
+quanto tempo cada processo ficou em um estado de execução, verificando assim, o balanceamento de carga.
+O eixo x indica o processo, e o eixo y quanto tempo o processo dicou em estado de execução.
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports none :width 600 :height 400 :session *R* 
+ df <- read.csv("trace4_64.pjdump", header=FALSE, sep=",");
+names(df) <- c("Processo", "Inicio", "Fim", "Estado_MPI","Duracao");
+library(ggplot2);
+
+dff<- subset(df, grepl("Running",Estado_MPI),drop=TRUE)
+library(dplyr)
+df1 <- dff %>%
+  group_by(Processo) %>%
+  summarize(Duracao = sum(Duracao));
+
+meanD= mean(df1$Duracao);
+seD=3*sd(df1$Duracao)/sqrt(length(df1$Duracao));
+
+g<-ggplot(df1, aes(x = Processo, y =Duracao)) + 
+          geom_bar(stat = "identity", color = "black", fill = "grey") +
+          theme_classic() +
+          ylab("Tempo de Execuçao")+
+          xlab("nº do Processo")+
+          ggtitle("Balanceamento de Carga - Tempo de Execuçao vs Processo")+
+          geom_segment(aes(x=-2,xend=0,y=meanD,yend=meanD),linetype="solid",color="red")+
+          geom_segment(aes(x=-2,xend=0,y=meanD+seD,yend=meanD+seD),linetype="dotted",color="red")+
+          geom_segment(aes(x=-2,xend=0,y=meanD-seD,yend=meanD-seD),linetype="dotted",color="red")+
+          geom_text(aes(x=-2, label=sprintf("%.2f", meanD), y=meanD),vjust = -0.5 ) +
+          geom_segment (aes( xend=Processo,yend=Duracao), size=2) ;
+ggsave("loadBalance4_64Port.png")
+#+end_src
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.5\textwidth]{loadBalance4_64.png}
+\caption{Plot do Balanceamento de carga em uma execução com 4 nos e 64 processos.}
+\label{fig:loadBalance4_64.png}
+\end{figure}
+
+
+
+É possível notar que não temos um balanceamento de carga ideal, enquanto processos mais ociosos chegam a executar por menos que 150 segundos, 
+um processo fica quase 300 segundos executando.
+
+* Conclusão e Trabalhos Futuros\label{sec:conclusao}
+
+Este artigo apresenta uma análise de desempenho da ferramenta de
+simulação de dinâmica de fluidos Alya com o intuito de melhor conhecer
+seu comportamento principalmente no que diz respeito ao balanceamento
+de carga. Para tal, uma simulação foi executada em uma plataforma de
+quatro nós computacionais totalizando 64 \emph{cores}, levando a uma
+execução de aproximadamente 450 segundos. O comportamento da execução
+foi rastreado utilizando a ferramenta Extrae, permitindo descobrir
+informações relevantes sobre o funcionamento do core do \textit{Alya}
+para o caso executado.  Dentre os resultados obtidos, salientamos que
+uma boa parte do tempo (cerca de 34% para uma execução com três
+\emph{timesteps}) é de certa forma desperdiçada no começo da execução
+para dividir o problema, criando uma sobrecarga considerável. Outros
+resultados incluem a detecção de anomalias em alguns processos e a
+percepção que o processo raiz (zero) envia sequencialmente os dados
+particionados aos diferentes nós, tornando o início da aplicação
+demasiadamente lento. O cálculo do percentual de desabalanceamento
+segundo Pearce nos indica que existe um potencial de melhoria caso as
+cargas sejam melhor distribuídas entre os participantes.
+
+Como trabalhos futuros, estudaremos possíveis mudanças no código que
+proporcionem um balanceamento distribuído de forma mais
+igualitária. Executaremos também experimentos similares com outras
+configurações, variando o número de nós, número de \textit{cores}, e
+número de \textit{timestep}s com o objetivo de confirmar o
+comportamento adquirido neste experimento.
+#+LaTeX: %
+Esperamos também marcar manualmente o início das iterações do
+algoritmo (alterando o código da aplicação) de forma que as métricas
+de balanceamento possam ser calculadas para cada fase de
+cálculo/comunicação. Esse refinamento permitirá verificar o
+desbalanceamento ao longo do tempo.
+
+#+LaTeX: \subsubsection*{Reconhecimentos}
+
+Esta investigação recebe fundos do projeto HPC-ELO, do programa H2020
+da União Européia e do MCTI/RNP-Brasil através do projeto HPC4E com o
+código 689772, do projeto FAPERGS/Inria ExaSE, do projeto universal do
+CNPq 447311/2014-0, e do laboratório internacional CNRS/LICIA. Nós
+também agradecemos Flavio Alles pelas discussões referentes às
+métricas de balanceamento de carga.
+
+* Referências                                                        :ignore:
+
+#+LATEX: \bibliographystyle{sbc}
+#+LATEX: \bibliography{refs}
+
+* Bib File is Here                                                 :noexport:
+
+Tangle this file with C-c C-v t
+
+#+begin_src bib :tangle refs.bib
+
+% put here your bibliography entries
+
+@inproceedings{pearce2012quantifying,
+  title={Quantifying the effectiveness of load balance algorithms},
+  author={Pearce, Olga and Gamblin, Todd and De Supinski, Bronis R and Schulz, Martin and Amato, Nancy M},
+  booktitle={Proceedings of the 26th ACM international conference on Supercomputing},
+  pages={185--194},
+  year={2012},
+  organization={ACM}
+}
+
+@misc{Arnaud:2015,
+  author = {Arnaud Legrand},
+  title = {Scientific Methodology and Performance Evaluation},
+  year = {2015},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/alegrand/SMPE}}
+}
+
+@misc{camelo:2016,
+  author = {Guilherme A. Camelo and
+            Lucas M. Schnorr } ,
+  title = {Performance Characterization of Computational Fluid Dynamics  },
+  year = {2016},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://bitbucket.org/guiacamelo/alya-applied-to-fluid-dinamics-simulation  }}
+}
+
+@misc{Alya,
+  author = {ALYA},
+  title = {{The Alya System - Large Scale Computational Mechanics: Alya overview}},
+  howpublished = {\url{http://www.bsc.es/computer-applications/alya-system }},
+  note = {Accessed: 2016-06-30},
+  year = {2013}
+}
+
+@misc{Prace,
+author = {Prace},
+  title = {{Prace Research Infrastructure }Unified European Applications Benchmark Suite - PRACE Research Infrastructure },
+  howpublished = {\url{http://www.prace-ri.eu/ueabs/}},
+  note = {Publicado: 2013-10-17, Acessado: 2016-07-15},
+  year = {2013}
+  }
+
+
+@article {vazquez2014alya,
+        title = {Alya: Towards Exascale for Engineering Simulation Codes},
+        journal = {arXiv.org},
+        year = {2014},
+        url = {http://arxiv.org/abs/1404.4881},
+        author = {M. V{\'a}zquez and G. Houzeaux and S. Koric and Antoni Artigues and J. Aguado-Sierra and Ruth Aris and D. Mira and H. Calmet and F. Cucchietti and Herbert Owen and A. Taha and Jos{\'e} Ma. Cela}
+}
+
+@techreport{jorge2014alya,
+title={Performance Analysis of Alya on a Tier-0 Machine using Extrae},
+author={Jorge Rodríguez},
+year={2014},
+institution={Prace White Papers},
+number={151},
+}
+
+@inproceedings{gabriel2004open,
+  title={Open MPI: Goals, concept, and design of a next generation MPI implementation},
+  author={Gabriel, Edgar and Fagg, Graham E and Bosilca, George and Angskun, Thara and Dongarra, Jack J and Squyres, Jeffrey M and Sahay, Vishal and Kambadur, Prabhanjan and Barrett, Brian and Lumsdaine, Andrew and others},
+  booktitle={European Parallel Virtual Machine/Message Passing Interface Users’ Group Meeting},
+  pages={97--104},
+  year={2004},
+  organization={Springer}
+}
+
+@MastersThesis{alles2016,
+    author     =     {Flavio Alles Rodrigues},
+    title     =     {{Study of Load Distribution Measures for High-performance Applications}},
+    school     =     {Universidade Federal do Rio Grande do Sul},
+    address     =     {Porto Alegre, RS, Brasil},
+    year     =     {2016},
+    }
+
+#+end_src
+
+* 2016-08-08 Lucas Analysis of file =trace4_64=                      :noexport:
+
+
+** Overview
+
+#+begin_src sh :results output :session :exports both
+head trace4_64.pjdump | sed "s/ //g" 
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0,0,0.007439362,"Notcreated",0.007439362
+1,0,0.008193654,"Notcreated",0.008193654
+2,0,0.00742335,"Notcreated",0.00742335
+3,0,0.008304441,"Notcreated",0.008304441
+4,0,0.007387003,"Notcreated",0.007387003
+5,0,0.007535912,"Notcreated",0.007535912
+6,0,0.008203843,"Notcreated",0.008203843
+7,0,0.007485411,"Notcreated",0.007485411
+8,0,0.007555806,"Notcreated",0.007555806
+9,0,0.007379377,"Notcreated",0.007379377
+#+end_example
+
+#+begin_src R :results output :session :exports both
+df <- read.csv("trace4_64.pjdump", header=FALSE, strip.white=TRUE);
+head(df);
+#+end_src
+
+#+RESULTS:
+:   V1 V2          V3          V4          V5
+: 1  0  0 0.007439362 Not created 0.007439362
+: 2  1  0 0.008193654 Not created 0.008193654
+: 3  2  0 0.007423350 Not created 0.007423350
+: 4  3  0 0.008304441 Not created 0.008304441
+: 5  4  0 0.007387003 Not created 0.007387003
+: 6  5  0 0.007535912 Not created 0.007535912
+
+#+begin_src R :results output :session :exports both
+names(df) <- c("Rank", "Start", "End", "State","Duration");
+df$Duration <- NULL;
+sapply(df, class);
+nrow(df);
+head(df);
+#+end_src
+
+#+RESULTS:
+#+begin_example
+     Rank     Start       End     State 
+"integer" "numeric" "numeric"  "factor"
+[1] 21439915
+  Rank Start         End       State
+1    0     0 0.007439362 Not created
+2    1     0 0.008193654 Not created
+3    2     0 0.007423350 Not created
+4    3     0 0.008304441 Not created
+5    4     0 0.007387003 Not created
+6    5     0 0.007535912 Not created
+#+end_example
+
+#+begin_src R :results output :session :exports both
+library(dplyr);
+dff <- df[df$State == "Running",];
+k <- dff %>%
+       select(Rank,Start,End,State) %>%
+       group_by(Rank) %>%
+       summarize(N = n(),
+                 SumRunningDuration = sum(End-Start)) %>%
+       as.data.frame();
+head(k);
+#+end_src
+
+#+RESULTS:
+:   Rank      N SumRunningDuration
+: 1    0  36335           156.2714
+: 2    1 102710           161.8569
+: 3    2 122681           150.2794
+: 4    3  82739           157.1831
+: 5    4 102710           149.9829
+: 6    5 222537           165.7443
+
+Great, now let's see if the =Running= state is similar
+
+#+begin_src R :results output :session :exports both
+k
+#+end_src
+
+#+RESULTS:
+#+begin_example
+   Rank      N SumRunningDuration
+1     0  36335           156.2714
+2     1 102710           161.8569
+3     2 122681           150.2794
+4     3  82739           157.1831
+5     4 102710           149.9829
+6     5 222537           165.7443
+7     6  82739           150.0337
+8     7 182594           161.7807
+9     8 182594           224.7952
+10    9 142652           161.5839
+11   10 202565           158.1590
+12   11 122681           171.9667
+13   12 182594           150.1384
+14   13 102715           173.0151
+15   14  82739           149.8105
+16   15 202565           166.1448
+17   16 162596           149.1624
+18   17 142625           203.3987
+19   18 202538           147.2916
+20   19 162596           144.1136
+21   20 222537           145.4956
+22   21 182567           210.1967
+23   22 202538           145.0048
+24   23 162596           142.5988
+25   24 222510           212.9492
+26   25 182567           149.9116
+27   26 162623           150.0622
+28   27 102710           147.2969
+29   28 162596           149.9659
+30   29 122681           149.7487
+31   30 182567           216.6166
+32   31 222510           162.1156
+33   32 222537           134.2115
+34   33 202538           142.3935
+35   34  82739           137.0475
+36   35 162623           137.1802
+37   36 202538           218.2943
+38   37 222510           139.0170
+39   38 162596           217.6161
+40   39 202538           138.1562
+41   40 142625           140.6418
+42   41 202538           145.0153
+43   42 202537           132.4744
+44   43 202538           140.7780
+45   44 202565           136.7399
+46   45 102710           143.1626
+47   46 182567           140.4913
+48   47 202565           144.3460
+49   48 202538           176.9806
+50   49 182566           171.6273
+51   50 142625           223.7313
+52   51 202538           183.3886
+53   52 142625           178.5631
+54   53 162596           176.9843
+55   54 222537           179.9802
+56   55 162596           182.3639
+57   56 222510           173.0901
+58   57 122654           234.1516
+59   58 182567           198.6307
+60   59 162596           181.4189
+61   60 202538           294.1330
+62   61 142625           233.6456
+63   62 182566           214.8506
+64   63 222510           177.2830
+#+end_example
+
+There is a lot of disparities, let's plot:
+
+#+begin_src R :results output graphics :file img/trace4_64-SumRunningDuration_per_Rank.pdf :exports both :width 6 :height 4 :session
+library(ggplot2);
+ggplot(k, aes(x=Rank, y=SumRunningDuration)) + geom_point() + theme_bw();
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-SumRunningDuration_per_Rank.pdf]]
+
+Let's see the N value:
+
+#+begin_src R :results output graphics :file img/trace4_64-N_per_Rank.pdf :exports both :width 6 :height 4 :session
+library(ggplot2);
+ggplot(k, aes(x=Rank, y=N)) + geom_point() + theme_bw();
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-N_per_Rank.pdf]]
+
+Remember, N is just the number of times the Running state appear for
+each rank. It shouldn't represent much.
+
+
+#+begin_src R :results output graphics :file img/trace4_64-N_per_SumRunningDuration_with_colored_Rank.pdf :exports both :width 6 :height 4 :session
+library(ggplot2);
+ggplot(k, aes(x=SumRunningDuration, y=N, color=Rank)) + geom_point() + theme_bw();
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-N_per_SumRunningDuration_with_colored_Rank.pdf]]
+
+Nothing to see here.
+
+The more interesting is indeed the first (plot SumRunningDuration as a
+function of Ranks). It shows the general overview of load
+imbalance. Let's do it better:
+
+#+begin_src R :results output graphics :file img/trace4_64-SumRunningDuration_per_Rank_v2.pdf :exports both :width 6 :height 2 :session
+library(ggplot2);
+ggplot(k, aes(x=Rank, y=SumRunningDuration)) +
+    geom_point() +
+    theme_bw() +
+    ylab("Computation Time (s)") +
+    xlab("MPI Process Rank") +
+    ylim(0, NA);
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-SumRunningDuration_per_Rank_v2.pdf]]
+
+Ok, this could be the first plot of this paper.
+
+** The Space/Time view
+
+It is very hard to plot everything (1.5 gigs of data), let's try.
+
+But first, let's see what do we have:
+
+#+begin_src R :results output :session :exports both
+unique(df$State);
+#+end_src
+
+#+RESULTS:
+:  [1] Not created         Running             Others             
+:  [4] Group Communication Waiting a message   Blocking Send      
+:  [7] Synchronization     Send Receive        Immediate Send     
+: [10] Immediate Receive   Wait/WaitAll        I/O                
+: 12 Levels: Blocking Send Group Communication I/O ... Waiting a message
+
+Ok, lots of stuff to look into. Let's try the gantt:
+
+#+begin_src R :results output graphics :file img/trace4_64-SpaceTimeView.pdf :exports both :width 6 :height 4 :session
+library(ggplot2);
+ggplot(df, aes(x=Start, xend=End, y=Rank, yend=Rank, color=State)) +
+   theme_bw() +
+   ylab("MPI Process Rank")+
+   xlab("Execution Time (seconds)")+
+#   geom_vline(aes(xintercept=245.095,linetype = "dt1 = 245.095")) +
+#   geom_vline(aes(xintercept=337.214,linetype = "dt2 = 337.214")) +
+#   geom_vline(aes(xintercept=430.186,linetype = "dt3 = 430.186")) +   
+#   labs(linetype='Tempo de termino do dt') +
+   geom_segment (size=2);
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-SpaceTimeView.pdf]]
+
+That file is just too big (38 megabytes for a PDF file).
+
+Let's plot just these states:
+- Running
+
+#+begin_src R :results output graphics :file img/trace4_64-SpaceTimeView_Running_Only.pdf :exports both :width 10 :height 4 :session
+library(ggplot2);
+ggplot(df[df$State=="Running",], aes(x=Start, xend=End, y=Rank, yend=Rank, color=State)) +
+   theme_bw() +
+   ylab("MPI Process Rank")+
+   xlab("Execution Time (seconds)")+
+   geom_segment (size=2) +
+   theme(legend.position="none");
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64-SpaceTimeView_Running_Only.pdf]]
+
+Only with the Running state, it already descends to 16 megabytes, it
+is still too large, but start to be usable. I think we have traced too
+much information.
+
+Ok, this figure with running could be used to illustrate in details
+the disparities in load balancing. Noticeable things:
+- Process 0 sends date in the beginning
+- Four processes groups (the four machines)
+  - We should check with the machine file
+- Processes 62 and 60 for some reason have an anomalous behavior that
+  seems not disturb other processes (since they finished after others
+  in the corresponding group)
+  - Not sure if this affects total execution time (should check Alya's
+    log)
+
+I think this 16Megabytes is too large to put in the paper, let's
+convert it to a compressed bitmap JPG file.
+
+#+begin_src sh :results output :session :exports both
+cd ./img
+convert -density 200 trace4_64-SpaceTimeView_Running_Only.pdf trace4_64-SpaceTimeView_Running_Only.jpg
+#+end_src
+
+#+RESULTS:
+
+Great, much better now.
+** Summary of time spent per state
+
+#+begin_src R :results output :session :exports both
+g <- df %>%
+       select(Rank,Start,End,State) %>%
+       group_by(Rank, State) %>%
+       summarize(N = n(),
+                 time = sum(End-Start)) %>%
+       as.data.frame();
+head(g[g$State=="Blocking Send",]);
+#+end_src
+
+#+RESULTS:
+:    Rank         State    N      time
+: 1     0 Blocking Send 1665 0.7850486
+: 9     1 Blocking Send   29 7.5670617
+: 21    2 Blocking Send   29 7.5755628
+: 33    3 Blocking Send   29 7.5813458
+: 45    4 Blocking Send   29 7.5903787
+: 57    5 Blocking Send   29 7.5903818
+
+Now, I intend to plot this with stacked bars.
+
+#+begin_src R :results output graphics :file img/trace4_64_StackedBars_StateSummary.pdf :exports both :width 9 :height 3 :session
+library(ggplot2);
+gg <- g[g$State != "I/O" & g$State != "Immediate Receive" &
+             g$State != "Immediate Send" & g$State != "Not created" &
+             g$State != "Others" & g$State != "Synchronization" & g$State != "Wait/WaitAll",];
+ggplot(gg, aes(x=Rank, y=time, fill=State)) +
+   geom_bar(stat="identity", position="stack") +
+   ylab("Amount of Time (s)") +
+   xlab("MPI Process Rank") +
+   facet_wrap (~State, nrow=1) +
+   theme_bw() +
+   theme(legend.position="none");
+#+end_src
+
+#+RESULTS:
+[[file:img/trace4_64_StackedBars_StateSummary.pdf]]
+
+
+
+* 2016-08-08 Calculated Lamda \lambda, the load imbalance metric         :noexport:
+
+
+I used the formula in the article from Pearce:
+https://www.cs.unc.edu/~tgamblin/pubs/2012/pearce-loadbalance-ics12.pdf
+
+Installing package moments is needed to calculate skewness and
+kurtosis with a single function, this was not used in the final article
+
+#+begin_src R :results output :exports none :dir "/ssh:bali1:~/"
+ df <- read.csv("trace4_64.pjdump", header=FALSE, sep=",");
+names(df) <- c("Processo", "Inicio", "Fim", "Estado_MPI","Duracao");
+dff<- subset(df, grepl("Running",Estado_MPI),drop=TRUE)
+library(dplyr)
+df1 <- dff %>%
+  group_by(Processo) %>%
+  summarize(Duracao = sum(Duracao));
+
+meanD= mean(df1$Duracao);
+maxD= max(df1$Duracao);
+library(moments)
+lambda = ((maxD/meanD) -1) * 100;
+sdD= sd(df1$Duracao);
+skewnessD=skewness(df1$Duracao)
+kurtosisD=kurtosis(df1$Duracao);
+lambda
+sdD
+skewnessD
+kurtosisD
+#+end_src
+
+#+RESULTS:
+: [1] 74.25161
+: [1] 32.40468
+: [1] 1.419715
+: [1] 5.071172
+
+
+* 2016-07-20 Execution Steps                                       :noexport:
+The execution is 4 dracos 64 cores 3 time-steps
+I will follow 64 cores 4 dracos 3 timesteps but in the end I will save
+alya files
+
+I will use dracos 2 3 5 6 so I can use draco 1 to process the files
+while running other execution
+
+** Configure timesteps
+Lets check the timesteps
+#+begin_src sh :results output :exports both 
+for i in 2 3 5 6; 
+do 
+    echo SSH ON DRACO$i; 
+    echo " "; 
+    ssh draco$i cat alya/4_tufan_run/7/c.dat
+
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example
+SSH ON DRACO2
+ 
+$-------------------------------------------------------------------
+RUN_DATA
+  ALYA:                   sq_cyl
+  RUN_TYPE:               noCONTI , PRELIMINARY, FREQUENCY=100
+  LATEX_INFO_FILE:        Yes
+  LIVE_INFORMATION:       Screen
+END_RUN_DATA
+$-------------------------------------------------------------------
+PROBLEM_DATA
+  TIME_COUPLING:          GLOBAL, PRESCR
+  TIME_INTERVAL=          0.0,100000.0
+  TIME_STEP_SIZE=         0.00025
+  NUMBER_OF_STEPS=        3
+  MAXIMUM_NUMBER_GLOBAL=  1 
+  NASTIN_MODULE:          On
+  END_NASTIN_MODULE
+  PARALL_SERVICE:         On
+    OUTPUT_FILE:          OFF
+    POSTPROCESS:          MASTER
+    PARTITION_TYPE:       FACES
+$   COMMUNICATION:        ASYNCRONOUS
+  END_PARALL_SERVICE 
+END_PROBLEM_DATA
+$-------------------------------------------------------------------
+SSH ON DRACO3
+ 
+$-------------------------------------------------------------------
+RUN_DATA
+  ALYA:                   sq_cyl
+  RUN_TYPE:               noCONTI , PRELIMINARY, FREQUENCY=100
+  LATEX_INFO_FILE:        Yes
+  LIVE_INFORMATION:       Screen
+END_RUN_DATA
+$-------------------------------------------------------------------
+PROBLEM_DATA
+  TIME_COUPLING:          GLOBAL, PRESCR
+  TIME_INTERVAL=          0.0,100000.0
+  TIME_STEP_SIZE=         0.00025
+  NUMBER_OF_STEPS=        3
+  MAXIMUM_NUMBER_GLOBAL=  1 
+  NASTIN_MODULE:          On
+  END_NASTIN_MODULE
+  PARALL_SERVICE:         On
+    OUTPUT_FILE:          OFF
+    POSTPROCESS:          MASTER
+    PARTITION_TYPE:       FACES
+$   COMMUNICATION:        ASYNCRONOUS
+  END_PARALL_SERVICE 
+END_PROBLEM_DATA
+$-------------------------------------------------------------------
+SSH ON DRACO5
+ 
+$-------------------------------------------------------------------
+RUN_DATA
+  ALYA:                   sq_cyl
+  RUN_TYPE:               noCONTI , PRELIMINARY, FREQUENCY=100
+  LATEX_INFO_FILE:        Yes
+  LIVE_INFORMATION:       Screen
+END_RUN_DATA
+$-------------------------------------------------------------------
+PROBLEM_DATA
+  TIME_COUPLING:          GLOBAL, PRESCR
+  TIME_INTERVAL=          0.0,100000.0
+  TIME_STEP_SIZE=         0.00025
+  NUMBER_OF_STEPS=        3
+  MAXIMUM_NUMBER_GLOBAL=  1 
+  NASTIN_MODULE:          On
+  END_NASTIN_MODULE
+  PARALL_SERVICE:         On
+    OUTPUT_FILE:          OFF
+    POSTPROCESS:          MASTER
+    PARTITION_TYPE:       FACES
+$   COMMUNICATION:        ASYNCRONOUS
+  END_PARALL_SERVICE 
+END_PROBLEM_DATA
+$-------------------------------------------------------------------
+SSH ON DRACO6
+ 
+$-------------------------------------------------------------------
+RUN_DATA
+  ALYA:                   sq_cyl
+  RUN_TYPE:               noCONTI , PRELIMINARY, FREQUENCY=100
+  LATEX_INFO_FILE:        Yes
+  LIVE_INFORMATION:       Screen
+END_RUN_DATA
+$-------------------------------------------------------------------
+PROBLEM_DATA
+  TIME_COUPLING:          GLOBAL, PRESCR
+  TIME_INTERVAL=          0.0,100000.0
+  TIME_STEP_SIZE=         0.00025
+  NUMBER_OF_STEPS=        3
+  MAXIMUM_NUMBER_GLOBAL=  1 
+  NASTIN_MODULE:          On
+  END_NASTIN_MODULE
+  PARALL_SERVICE:         On
+    OUTPUT_FILE:          OFF
+    POSTPROCESS:          MASTER
+    PARTITION_TYPE:       FACES
+$   COMMUNICATION:        ASYNCRONOUS
+  END_PARALL_SERVICE 
+END_PROBLEM_DATA
+$-------------------------------------------------------------------
+#+end_example
+
+
+** machinefile
+Checking machinefile
+#+begin_src sh :results output :exports both 
+for i in 2 3 5 6; 
+do 
+    echo SSH ON DRACO$i; 
+    echo " "; 
+    ssh draco$i cat  alya/Executables/unix/machinefile4_64
+
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example
+SSH ON DRACO2
+ 
+draco2 slots=16 max_slots=16
+draco3 slots=16 max_slots=16
+draco5 slots=16 max_slots=16
+draco6 slots=16 max_slots=16
+
+SSH ON DRACO3
+ 
+draco2 slots=16 max_slots=16
+draco3 slots=16 max_slots=16
+draco5 slots=16 max_slots=16
+draco6 slots=16 max_slots=16
+
+SSH ON DRACO5
+ 
+draco2 slots=16 max_slots=16
+draco3 slots=16 max_slots=16
+draco5 slots=16 max_slots=16
+draco6 slots=16 max_slots=16
+
+SSH ON DRACO6
+ 
+draco2 slots=16 max_slots=16
+draco3 slots=16 max_slots=16
+draco5 slots=16 max_slots=16
+draco6 slots=16 max_slots=16
+
+#+end_example
+
+** Running
+
+After running I will copy the results to another folder to have it for
+future use
+#+begin_src sh :results output :exports both :dir /ssh:draco2:~
+export EXTRAE_CONFIG_FILE=/home/gacamelo/alya/Executables/unix/extrae.xml 
+export EXTRAE_HOME=/home/gacamelo/install/extrae-3.3.0/build/ 
+export LD_PRELOAD=${EXTRAE_HOME}/lib/libmpitrace.so 
+/home/gacamelo/install/openmpi-1.10.2/build/bin/mpirun \
+    -x EXTRAE_CONFIG_FILE=/home/gacamelo/alya/Executables/unix/extrae.xml \
+    -x EXTRAE_HOME=/home/gacamelo/install/extrae-3.3.0/build/ \
+    -x LD_PRELOAD=${EXTRAE_HOME}/lib/libmpitrace.so \
+    -mca btl_tcp_if_include em1 --mca btl tcp,self \
+    --machinefile /home/gacamelo/alya/Executables/unix/machinefile4_64 \
+    -np 64 \
+    /home/gacamelo/alya/Executables/unix/Alya.x \
+    /home/gacamelo/alya/4_tufan_run/7/c 
+#+end_src
+
+** Saving the result in =~/result4_64=
+#+begin_src sh :results output :exports both :dir /ssh:draco2:~
+mkdir result4_64
+cp -r alya/4_tufan_run/7 result4_64
+#+end_src
+
+#+RESULTS:
+
+** Gathering all traces in draco1
+Script to gether all traces in draco1
+
+Create folder at draco
+#+begin_src sh  :results output :exports both :dir /ssh:draco1:~
+cd
+mkdir trace4_64
+#+end_src
+
+#+RESULTS:
+
+#+begin_src sh :results output :exports both 
+for i in 2 3 5 6; 
+do 
+    echo SSH ON DRACO$i; 
+    echo " "; 
+    ssh draco$i scp TRACE.mpits draco1:~/trace4_64/
+    ssh draco$i scp -r set-0 draco1:~/trace4_64/
+done
+#+end_src
+
+#+RESULTS:
+: SSH ON DRACO2
+:  
+: SSH ON DRACO3
+:  
+: SSH ON DRACO5
+:  
+: SSH ON DRACO6
+:  
+
+lets see if the copy was done correctly
+#+begin_src sh  :results output :exports both :dir /ssh:draco1:~
+cd trace4_64/
+ls
+cd set-0
+ls
+#+end_src
+
+#+RESULTS:
+#+begin_example
+TRACE.mpits  set-0
+TRACE@draco2.0000001694000000000000.mpit
+TRACE@draco2.0000001694000000000000.sym
+TRACE@draco2.0000001695000001000000.mpit
+TRACE@draco2.0000001695000001000000.sym
+TRACE@draco2.0000001696000002000000.mpit
+TRACE@draco2.0000001696000002000000.sym
+TRACE@draco2.0000001697000003000000.mpit
+TRACE@draco2.0000001697000003000000.sym
+TRACE@draco2.0000001698000004000000.mpit
+TRACE@draco2.0000001698000004000000.sym
+TRACE@draco2.0000001699000005000000.mpit
+TRACE@draco2.0000001699000005000000.sym
+TRACE@draco2.0000001700000006000000.mpit
+TRACE@draco2.0000001700000006000000.sym
+TRACE@draco2.0000001703000007000000.mpit
+TRACE@draco2.0000001703000007000000.sym
+TRACE@draco2.0000001705000008000000.mpit
+TRACE@draco2.0000001705000008000000.sym
+TRACE@draco2.0000001706000009000000.mpit
+TRACE@draco2.0000001706000009000000.sym
+TRACE@draco2.0000001707000010000000.mpit
+TRACE@draco2.0000001707000010000000.sym
+TRACE@draco2.0000001710000011000000.mpit
+TRACE@draco2.0000001710000011000000.sym
+TRACE@draco2.0000001711000012000000.mpit
+TRACE@draco2.0000001711000012000000.sym
+TRACE@draco2.0000001712000013000000.mpit
+TRACE@draco2.0000001712000013000000.sym
+TRACE@draco2.0000001713000014000000.mpit
+TRACE@draco2.0000001713000014000000.sym
+TRACE@draco2.0000001714000015000000.mpit
+TRACE@draco2.0000001714000015000000.sym
+TRACE@draco3.0000001055000016000000.mpit
+TRACE@draco3.0000001055000016000000.sym
+TRACE@draco3.0000001057000017000000.mpit
+TRACE@draco3.0000001057000017000000.sym
+TRACE@draco3.0000001058000018000000.mpit
+TRACE@draco3.0000001058000018000000.sym
+TRACE@draco3.0000001059000019000000.mpit
+TRACE@draco3.0000001059000019000000.sym
+TRACE@draco3.0000001060000020000000.mpit
+TRACE@draco3.0000001060000020000000.sym
+TRACE@draco3.0000001061000021000000.mpit
+TRACE@draco3.0000001061000021000000.sym
+TRACE@draco3.0000001062000022000000.mpit
+TRACE@draco3.0000001062000022000000.sym
+TRACE@draco3.0000001063000023000000.mpit
+TRACE@draco3.0000001063000023000000.sym
+TRACE@draco3.0000001064000024000000.mpit
+TRACE@draco3.0000001064000024000000.sym
+TRACE@draco3.0000001065000025000000.mpit
+TRACE@draco3.0000001065000025000000.sym
+TRACE@draco3.0000001066000026000000.mpit
+TRACE@draco3.0000001066000026000000.sym
+TRACE@draco3.0000001067000027000000.mpit
+TRACE@draco3.0000001067000027000000.sym
+TRACE@draco3.0000001068000028000000.mpit
+TRACE@draco3.0000001068000028000000.sym
+TRACE@draco3.0000001069000029000000.mpit
+TRACE@draco3.0000001069000029000000.sym
+TRACE@draco3.0000001070000030000000.mpit
+TRACE@draco3.0000001070000030000000.sym
+TRACE@draco3.0000001071000031000000.mpit
+TRACE@draco3.0000001071000031000000.sym
+TRACE@draco5.0000048674000032000000.mpit
+TRACE@draco5.0000048674000032000000.sym
+TRACE@draco5.0000048675000033000000.mpit
+TRACE@draco5.0000048675000033000000.sym
+TRACE@draco5.0000048676000034000000.mpit
+TRACE@draco5.0000048676000034000000.sym
+TRACE@draco5.0000048677000035000000.mpit
+TRACE@draco5.0000048677000035000000.sym
+TRACE@draco5.0000048678000036000000.mpit
+TRACE@draco5.0000048678000036000000.sym
+TRACE@draco5.0000048679000037000000.mpit
+TRACE@draco5.0000048679000037000000.sym
+TRACE@draco5.0000048680000038000000.mpit
+TRACE@draco5.0000048680000038000000.sym
+TRACE@draco5.0000048681000039000000.mpit
+TRACE@draco5.0000048681000039000000.sym
+TRACE@draco5.0000048682000040000000.mpit
+TRACE@draco5.0000048682000040000000.sym
+TRACE@draco5.0000048683000041000000.mpit
+TRACE@draco5.0000048683000041000000.sym
+TRACE@draco5.0000048684000042000000.mpit
+TRACE@draco5.0000048684000042000000.sym
+TRACE@draco5.0000048685000043000000.mpit
+TRACE@draco5.0000048685000043000000.sym
+TRACE@draco5.0000048686000044000000.mpit
+TRACE@draco5.0000048686000044000000.sym
+TRACE@draco5.0000048687000045000000.mpit
+TRACE@draco5.0000048687000045000000.sym
+TRACE@draco5.0000048688000046000000.mpit
+TRACE@draco5.0000048688000046000000.sym
+TRACE@draco5.0000048689000047000000.mpit
+TRACE@draco5.0000048689000047000000.sym
+TRACE@draco6.0000012615000048000000.mpit
+TRACE@draco6.0000012615000048000000.sym
+TRACE@draco6.0000012616000049000000.mpit
+TRACE@draco6.0000012616000049000000.sym
+TRACE@draco6.0000012617000050000000.mpit
+TRACE@draco6.0000012617000050000000.sym
+TRACE@draco6.0000012618000051000000.mpit
+TRACE@draco6.0000012618000051000000.sym
+TRACE@draco6.0000012619000052000000.mpit
+TRACE@draco6.0000012619000052000000.sym
+TRACE@draco6.0000012620000053000000.mpit
+TRACE@draco6.0000012620000053000000.sym
+TRACE@draco6.0000012621000054000000.mpit
+TRACE@draco6.0000012621000054000000.sym
+TRACE@draco6.0000012622000055000000.mpit
+TRACE@draco6.0000012622000055000000.sym
+TRACE@draco6.0000012623000056000000.mpit
+TRACE@draco6.0000012623000056000000.sym
+TRACE@draco6.0000012624000057000000.mpit
+TRACE@draco6.0000012624000057000000.sym
+TRACE@draco6.0000012625000058000000.mpit
+TRACE@draco6.0000012625000058000000.sym
+TRACE@draco6.0000012626000059000000.mpit
+TRACE@draco6.0000012626000059000000.sym
+TRACE@draco6.0000012627000060000000.mpit
+TRACE@draco6.0000012627000060000000.sym
+TRACE@draco6.0000012628000061000000.mpit
+TRACE@draco6.0000012628000061000000.sym
+TRACE@draco6.0000012629000062000000.mpit
+TRACE@draco6.0000012629000062000000.sym
+TRACE@draco6.0000012630000063000000.mpit
+TRACE@draco6.0000012630000063000000.sym
+#+end_example
+
+
+Ok All files are in =draco1= folder =~/trace4_64= the folder has size
+2.7 G. 
+#+begin_src sh :results output verbatim :dir /ssh:draco1:~
+cd trace4_64 
+du -sh # check size of folder
+#+end_src
+
+#+RESULTS:
+: 2.7G	.
+
+** pre-processing for merge
+Now I have to set TRACE.mpits to point to the right folder
+
+#+begin_src sh :results output :exports both :dir /ssh:draco1:~
+cd trace4_64
+cat TRACE.mpits
+#+end_src
+
+#+RESULTS:
+#+begin_example
+/home/gacamelo/set-0/TRACE@draco2.0000001694000000000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001695000001000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001696000002000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001697000003000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001698000004000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001699000005000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001700000006000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001703000007000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001705000008000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001706000009000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001707000010000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001710000011000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001711000012000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001712000013000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001713000014000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco2.0000001714000015000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001055000016000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001057000017000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001058000018000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001059000019000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001060000020000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001061000021000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001062000022000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001063000023000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001064000024000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001065000025000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001066000026000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001067000027000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001068000028000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001069000029000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001070000030000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco3.0000001071000031000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048674000032000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048675000033000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048676000034000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048677000035000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048678000036000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048679000037000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048680000038000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048681000039000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048682000040000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048683000041000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048684000042000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048685000043000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048686000044000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048687000045000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048688000046000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco5.0000048689000047000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012615000048000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012616000049000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012617000050000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012618000051000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012619000052000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012620000053000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012621000054000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012622000055000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012623000056000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012624000057000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012625000058000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012626000059000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012627000060000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012628000061000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012629000062000000.mpit named 
+/home/gacamelo/set-0/TRACE@draco6.0000012630000063000000.mpit named 
+#+end_example
+
+So I will replace =set-0=  with =/traces4_64/set-0= with sed, since I want
+to use slash as a replacing character, I have to use a different
+delimiter, I will use =~=
+#+begin_src sh :results output :exports both :dir /ssh:draco1:~/
+cd trace4_64
+sed -i s~set-0~trace4_64/set-0~g TRACE.mpits
+cat TRACE.mpits
+#+end_src
+
+#+RESULTS:
+#+begin_example
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001694000000000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001695000001000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001696000002000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001697000003000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001698000004000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001699000005000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001700000006000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001703000007000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001705000008000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001706000009000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001707000010000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001710000011000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001711000012000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001712000013000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001713000014000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001714000015000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001055000016000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001057000017000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001058000018000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001059000019000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001060000020000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001061000021000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001062000022000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001063000023000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001064000024000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001065000025000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001066000026000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001067000027000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001068000028000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001069000029000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001070000030000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001071000031000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048674000032000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048675000033000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048676000034000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048677000035000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048678000036000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048679000037000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048680000038000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048681000039000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048682000040000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048683000041000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048684000042000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048685000043000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048686000044000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048687000045000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048688000046000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048689000047000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012615000048000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012616000049000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012617000050000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012618000051000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012619000052000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012620000053000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012621000054000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012622000055000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012623000056000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012624000057000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012625000058000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012626000059000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012627000060000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012628000061000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012629000062000000.mpit named 
+/home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012630000063000000.mpit named 
+#+end_example
+
+
+
+Looks good
+** Merge
+Ok, Lets try to merge 
+
+#+begin_src sh :results output verbatim :dir /ssh:draco1:~/
+cd ~/trace4_64
+export EXTRAE_CONFIG_FILE=/home/gacamelo/alya/Executables/unix/extrae.xml
+export EXTRAE_HOME=/home/gacamelo/install/extrae-3.3.0/build/
+export LD_PRELOAD=${EXTRAE_HOME}/lib/libmpitrace.so
+/home/gacamelo/install/extrae-3.3.0/build/bin/mpi2prv -f ~/trace4_64/TRACE.mpits -o ~/trace4_64/output.prv > ~/trace4_64/result 2> ~/trace4_64/resulterror
+cat resulterror
+echo RESULT
+cat result
+#+end_src
+
+#+RESULTS:
+#+begin_example
+RESULT
+merger: Output trace format is: Paraver
+merger: Extrae 3.3.0 (revision 3966 based on extrae/trunk)
+mpi2prv: Assigned nodes < draco1 >
+mpi2prv: Assigned size per processor < 2707 Mbytes >
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001694000000000000.mpit is object 1.1.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001695000001000000.mpit is object 1.2.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001696000002000000.mpit is object 1.3.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001697000003000000.mpit is object 1.4.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001698000004000000.mpit is object 1.5.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001699000005000000.mpit is object 1.6.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001700000006000000.mpit is object 1.7.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001703000007000000.mpit is object 1.8.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001705000008000000.mpit is object 1.9.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001706000009000000.mpit is object 1.10.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001707000010000000.mpit is object 1.11.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001710000011000000.mpit is object 1.12.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001711000012000000.mpit is object 1.13.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001712000013000000.mpit is object 1.14.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001713000014000000.mpit is object 1.15.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco2.0000001714000015000000.mpit is object 1.16.1 on node draco2 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001055000016000000.mpit is object 1.17.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001057000017000000.mpit is object 1.18.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001058000018000000.mpit is object 1.19.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001059000019000000.mpit is object 1.20.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001060000020000000.mpit is object 1.21.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001061000021000000.mpit is object 1.22.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001062000022000000.mpit is object 1.23.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001063000023000000.mpit is object 1.24.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001064000024000000.mpit is object 1.25.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001065000025000000.mpit is object 1.26.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001066000026000000.mpit is object 1.27.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001067000027000000.mpit is object 1.28.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001068000028000000.mpit is object 1.29.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001069000029000000.mpit is object 1.30.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001070000030000000.mpit is object 1.31.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco3.0000001071000031000000.mpit is object 1.32.1 on node draco3 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048674000032000000.mpit is object 1.33.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048675000033000000.mpit is object 1.34.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048676000034000000.mpit is object 1.35.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048677000035000000.mpit is object 1.36.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048678000036000000.mpit is object 1.37.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048679000037000000.mpit is object 1.38.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048680000038000000.mpit is object 1.39.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048681000039000000.mpit is object 1.40.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048682000040000000.mpit is object 1.41.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048683000041000000.mpit is object 1.42.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048684000042000000.mpit is object 1.43.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048685000043000000.mpit is object 1.44.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048686000044000000.mpit is object 1.45.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048687000045000000.mpit is object 1.46.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048688000046000000.mpit is object 1.47.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco5.0000048689000047000000.mpit is object 1.48.1 on node draco5 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012615000048000000.mpit is object 1.49.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012616000049000000.mpit is object 1.50.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012617000050000000.mpit is object 1.51.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012618000051000000.mpit is object 1.52.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012619000052000000.mpit is object 1.53.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012620000053000000.mpit is object 1.54.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012621000054000000.mpit is object 1.55.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012622000055000000.mpit is object 1.56.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012623000056000000.mpit is object 1.57.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012624000057000000.mpit is object 1.58.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012625000058000000.mpit is object 1.59.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012626000059000000.mpit is object 1.60.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012627000060000000.mpit is object 1.61.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012628000061000000.mpit is object 1.62.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012629000062000000.mpit is object 1.63.1 on node draco6 assigned to processor 0
+mpi2prv: File /home/gacamelo/trace4_64/set-0/TRACE@draco6.0000012630000063000000.mpit is object 1.64.1 on node draco6 assigned to processor 0
+mpi2prv: Time synchronization has been turned on
+mpi2prv: Checking for target directory existance... exists, ok!
+mpi2prv: Selected output trace format is Paraver
+mpi2prv: Stored trace format is Paraver
+mpi2prv: Searching synchronization points... done
+mpi2prv: Enabling Time Synchronization (Task).
+mpi2prv: Circular buffer enabled at tracing time? NO
+mpi2prv: Parsing intermediate files
+mpi2prv: Progress 1 of 2 ... 5% 10% 15% 20% 25% 30% 35% 40% 45% 50% 55% 60% 65% 70% 75% 80% 85% 90% 95% done
+mpi2prv: Processor 0 succeeded to translate its assigned files
+mpi2prv: Elapsed time translating files: 0 hours 2 minutes 24 seconds
+mpi2prv: Elapsed time sorting addresses: 0 hours 0 minutes 0 seconds
+mpi2prv: Generating tracefile (intermediate buffers of 104856 events)
+         This process can take a while. Please, be patient.
+mpi2prv: Progress 2 of 2 ... 5% 10% 15% 20% 25% 30% 35% 40% 45% 50% 55% 60% 65% 70% 75% 80% 85% 90% 95% done
+mpi2prv: Elapsed time merge step: 0 hours 1 minutes 39 seconds
+mpi2prv: Resulting tracefile occupies 2034912161 bytes
+mpi2prv: Removing temporal files... done
+mpi2prv: Elapsed time removing temporal files: 0 hours 0 minutes 1 seconds
+mpi2prv: Congratulations! /home/gacamelo/trace4_64/output.prv has been generated.
+#+end_example
+
+
+Good no error
+#+begin_src sh :results output verbatim :dir /ssh:draco1:~/
+cd ~/trace4_64
+ls
+#+end_src
+
+#+RESULTS:
+: TRACE.mpits  output.pcf  output.prv  output.row  result  resulterror  set-0
+
+
+** Convert to pjdump
+I took the script prv2pjdump.pl from the repository and copied to draco1
+ #+begin_src sh :results output :exports both
+ cd ~/Dropbox/IC/forgeRepo/alya
+ scp prv2pjdump.pl draco1:~/trace4_64
+ #+end_src
+
+ #+RESULTS:
+
+#+begin_src sh :results output :exports both :dir /ssh:draco1:~/trace4_64
+perl prv2pjdump.pl -i output > trace4_64.pjdump 2>err
+cat err
+#+end_src
+
+#+RESULTS:
+
+#+begin_src sh :results output :exports both :dir /ssh:draco1:~/trace4_64
+cat err
+head trace4_64.pjdump 
+tail trace4_64.pjdump
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+rank-0, 0, 7439362, "Not created"
+rank-1, 0, 8193654, "Not created"
+rank-2, 0, 7423350, "Not created"
+rank-3, 0, 8304441, "Not created"
+rank-4, 0, 7387003, "Not created"
+rank-5, 0, 7535912, "Not created"
+rank-6, 0, 8203843, "Not created"
+rank-7, 0, 7485411, "Not created"
+rank-8, 0, 7555806, "Not created"
+rank-9, 0, 7379377, "Not created"
+rank-62, 545099199036, 545099225783, "Running"
+rank-62, 545099225783, 545109414227, "Others"
+rank-60, 545099320706, 545099353578, "Running"
+rank-60, 545099353578, 545109147008, "Others"
+rank-60, 545109147008, 545109155413, "Running"
+rank-60, 545109155413, 545597195553, "I/O"
+rank-62, 545109414227, 545109420819, "Running"
+rank-62, 545109420819, 545583088401, "I/O"
+rank-62, 545583088401, 545583099332, "Running"
+rank-60, 545597195553, 545597202106, "Running"
+#+end_example
+
+
+Looks good
+
+Ok Lets filter it now
+
+#+begin_src sh :results output :exports both  :dir  /ssh:draco1:~/trace4_64
+sed -i "s/rank-//" trace4_64.pjdump
+head trace4_64.pjdump
+tail trace4_64.pjdump
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0, 0, 7439362, "Not created"
+1, 0, 8193654, "Not created"
+2, 0, 7423350, "Not created"
+3, 0, 8304441, "Not created"
+4, 0, 7387003, "Not created"
+5, 0, 7535912, "Not created"
+6, 0, 8203843, "Not created"
+7, 0, 7485411, "Not created"
+8, 0, 7555806, "Not created"
+9, 0, 7379377, "Not created"
+62, 545099199036, 545099225783, "Running"
+62, 545099225783, 545109414227, "Others"
+60, 545099320706, 545099353578, "Running"
+60, 545099353578, 545109147008, "Others"
+60, 545109147008, 545109155413, "Running"
+60, 545109155413, 545597195553, "I/O"
+62, 545109414227, 545109420819, "Running"
+62, 545109420819, 545583088401, "I/O"
+62, 545583088401, 545583099332, "Running"
+60, 545597195553, 545597202106, "Running"
+#+end_example
+
+OK, So now we have the rank, the inicial time, the final time, and
+the operation. I need to divide everything by 1000000000
+ 
+
+#+begin_src sh :results output :exports both  :dir  /ssh:draco1:~/trace4_64
+cat trace4_64.pjdump >temp
+wc -l temp
+#+end_src
+
+#+RESULTS:
+: 21439915 temp
+
+I will use awk
+#+begin_src sh :results output :exports both  :dir  /ssh:draco1:~/trace4_64
+awk '{$2 = $2/1000000000 ","; print}' temp >temp2
+awk '{$3 = $3/1000000000 ","; print}' temp2 >temp3
+mv temp3 trace4_64.pjdump
+#+end_src
+
+#+RESULTS:
+Lets check
+#+begin_src sh :results output :exports both  :dir  /ssh:draco1:~/trace4_64
+head -n 100 trace4_64.pjdump
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0, 0, 0.00743936, "Not created"
+1, 0, 0.00819365, "Not created"
+2, 0, 0.00742335, "Not created"
+3, 0, 0.00830444, "Not created"
+4, 0, 0.007387, "Not created"
+5, 0, 0.00753591, "Not created"
+6, 0, 0.00820384, "Not created"
+7, 0, 0.00748541, "Not created"
+8, 0, 0.00755581, "Not created"
+9, 0, 0.00737938, "Not created"
+10, 0, 0.00739029, "Not created"
+11, 0, 0.00678154, "Not created"
+12, 0, 0.00751336, "Not created"
+13, 0, 0.00735177, "Not created"
+14, 0, 0.00830374, "Not created"
+15, 0, 0.00730048, "Not created"
+16, 0, 0.0122853, "Not created"
+17, 0, 0.0121268, "Not created"
+18, 0, 0.0122728, "Not created"
+19, 0, 0.0123215, "Not created"
+20, 0, 0.0120684, "Not created"
+21, 0, 0.0121674, "Not created"
+22, 0, 0.0123446, "Not created"
+23, 0, 0.0122992, "Not created"
+24, 0, 0.0121784, "Not created"
+25, 0, 0.0121039, "Not created"
+26, 0, 0.0123307, "Not created"
+27, 0, 0.0122183, "Not created"
+28, 0, 0.0121401, "Not created"
+29, 0, 0.0120751, "Not created"
+30, 0, 0.0122703, "Not created"
+31, 0, 0.0120294, "Not created"
+32, 0, 0.0114977, "Not created"
+33, 0, 0.0110269, "Not created"
+34, 0, 0.0115395, "Not created"
+35, 0, 0.0113231, "Not created"
+36, 0, 0.0115165, "Not created"
+37, 0, 0.0113519, "Not created"
+38, 0, 0.0114316, "Not created"
+39, 0, 0.0113046, "Not created"
+40, 0, 0.0115556, "Not created"
+41, 0, 0.0113182, "Not created"
+42, 0, 0.0114434, "Not created"
+43, 0, 0.0121348, "Not created"
+44, 0, 0.0114993, "Not created"
+45, 0, 0.0120897, "Not created"
+46, 0, 0.0115102, "Not created"
+47, 0, 0.0115617, "Not created"
+48, 0, 0.00443085, "Not created"
+49, 0, 0.00426944, "Not created"
+50, 0, 0.00457074, "Not created"
+51, 0, 0.00451644, "Not created"
+52, 0, 0.00411048, "Not created"
+53, 0, 0.00438287, "Not created"
+54, 0, 0.00441818, "Not created"
+55, 0, 0.00426692, "Not created"
+56, 0, 0.00410944, "Not created"
+57, 0, 0.00430586, "Not created"
+58, 0, 0.00435216, "Not created"
+59, 0, 0.00425341, "Not created"
+60, 0, 0.0355374, "Running"
+61, 0, 0.0042578, "Not created"
+62, 0, 0.000174543, "Not created"
+63, 0, 0.00444741, "Not created"
+62, 0.000174543, 0.0363628, "Running"
+56, 0.00410944, 0.034004, "Running"
+52, 0.00411048, 0.0323992, "Running"
+59, 0.00425341, 0.0353491, "Running"
+61, 0.0042578, 0.0361577, "Running"
+55, 0.00426692, 0.0336621, "Running"
+49, 0.00426944, 0.0310362, "Running"
+57, 0.00430586, 0.034434, "Running"
+58, 0.00435216, 0.0348015, "Running"
+53, 0.00438287, 0.0327797, "Running"
+54, 0.00441818, 0.0331939, "Running"
+48, 0.00443085, 0.0305948, "Running"
+63, 0.00444741, 0.0369593, "Running"
+51, 0.00451644, 0.0320083, "Running"
+50, 0.00457074, 0.0314648, "Running"
+11, 0.00678154, 0.0185105, "Running"
+15, 0.00730048, 0.0190465, "Running"
+13, 0.00735177, 0.0187524, "Running"
+9, 0.00737938, 0.018324, "Running"
+4, 0.007387, 0.0176747, "Running"
+10, 0.00739029, 0.0183992, "Running"
+2, 0.00742335, 0.0174295, "Running"
+0, 0.00743936, 0.0370928, "Running"
+7, 0.00748541, 0.0181402, "Running"
+12, 0.00751336, 0.0186816, "Running"
+5, 0.00753591, 0.0178121, "Running"
+8, 0.00755581, 0.0181717, "Running"
+1, 0.00819365, 0.0173994, "Running"
+6, 0.00820384, 0.0180049, "Running"
+14, 0.00830374, 0.0189492, "Running"
+3, 0.00830444, 0.0176476, "Running"
+33, 0.0110269, 0.0272548, "Running"
+39, 0.0113046, 0.0292101, "Running"
+41, 0.0113182, 0.0298612, "Running"
+35, 0.0113231, 0.0279107, "Running"
+37, 0.0113519, 0.028566, "Running"
+38, 0.0114316, 0.0288735, "Running"
+#+end_example
+
+Looks good.
+
+
