@@ -1,0 +1,32 @@
+<?xml version='1.0'?>
+
+<trace enabled="yes"
+ home="/home/gacamelo/install/extrae-3.3.0/build"
+ initial-mode="detail"
+ type="paraver"
+ xml-parser-id="Id: xml-parse.c 3918 2016-03-11 14:59:01Z harald $"
+>
+
+  <mpi enabled="yes">
+    <counters enabled="no" />
+  </mpi>
+
+  <openmp enabled="no"/>
+  <pthread enabled="no"/>
+  <callers enabled="no"/>
+  <user-functions enabled="no"/>
+  <counters enabled="no"/>
+  <storage enabled="no"/>
+  <buffer enabled="yes">
+    <size enabled="yes">500000</size>
+    <circular enabled="no" />
+  </buffer>
+  <trace-control enabled="no"/>
+  <others enabled="no"/>
+  <bursts enabled="no"/>
+  <sampling enabled="no"/>
+  <dynamic-memory enabled="no"/>
+  <input-output enabled="no"/>
+  <merge enabled="no"/> 
+
+</trace>
